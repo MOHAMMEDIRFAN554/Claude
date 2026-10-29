@@ -1,0 +1,6 @@
+torch
+transformers>=4.45
+peft>=0.12
+accelerate>=0.33
+bitsandbytes>=0.43; platform_system != "Darwin"
+sentencepiece

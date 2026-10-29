@@ -1,43 +1,83 @@
-# mygpt
+# My AI
 
-A tiny GPT (the same kind of transformer model behind ChatGPT and Claude, just much, much smaller) written from scratch in pure Python + NumPy. No PyTorch, no GPU needed.
+Three projects, from "how does a GPT work" to "an AI that writes code and finds bugs, offline".
 
-## What's inside
+| Folder | What it is | Needs |
+|---|---|---|
+| [`mygpt/`](mygpt) | A tiny GPT written from scratch in NumPy. Learn how transformers work. | Any computer |
+| [`coder/`](coder) | **mycoder**: an offline AI coding assistant. Writes code, reviews files for bugs, fixes them. | Ollama + 8 GB RAM |
+| [`finetune/`](finetune) | Train mycoder on your own code with LoRA. Runs free on Google Colab. | Free Colab GPU |
 
-- `gpt.py`: the whole model in one file
-  - character-level tokenizer
-  - token + position embeddings
-  - transformer blocks: LayerNorm, multi-head causal self-attention, MLP with GELU, residual connections
-  - hand-written backpropagation (verified with a gradient check)
-  - AdamW optimizer with warmup and cosine learning-rate decay
-  - text generation with temperature and top-k sampling
-- `input.txt`: short original stories used as training data
-- `mygpt.npz`: trained weights (about 350K parameters)
+---
 
-## Quick start
+## 1. mycoder: offline coding assistant
 
-```bash
-pip install numpy
+Runs [Qwen2.5-Coder](https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct), one of the strongest open-source coding models, on your own computer. No internet after setup, your code never leaves your machine.
 
-# check the backprop math is correct
-python gpt.py gradcheck
+**Setup (once)**
+1. Install Ollama: https://ollama.com/download
+2. Download the model (about 4.7 GB):
+   ```
+   ollama pull qwen2.5-coder:7b
+   ```
+   Laptop with 8 GB RAM or less? Use `qwen2.5-coder:1.5b` instead (1 GB, faster, a bit less smart).
+3. Give it your own name and personality:
+   ```
+   cd coder
+   ollama create mycoder -f Modelfile
+   ```
 
-# train (takes a few minutes on a laptop CPU)
-python gpt.py train --data input.txt --steps 2500
+**Use it**
+```
+python coder.py chat                  # chat in the terminal (/file PATH to attach a file)
+python coder.py web                   # chat in your browser: http://localhost:8000
+python coder.py ask "write a FastAPI endpoint that uploads a file"
+python coder.py review app.py         # find bugs, with line numbers and fixes
+python coder.py fix app.py            # writes app.fixed.py, original untouched
+python coder.py explain app.py        # explain what a file does
+```
+Only needs Python 3.8+, no packages to install.
 
-# generate text
-python gpt.py generate --prompt "Once upon a time" --length 400
+| Your computer | Model to use |
+|---|---|
+| 8 GB RAM, no GPU | `qwen2.5-coder:1.5b` or `3b` |
+| 16 GB RAM | `qwen2.5-coder:7b` (recommended) |
+| 32 GB RAM or a GPU with 16 GB+ | `qwen2.5-coder:14b` |
+| GPU with 24 GB+ | `qwen2.5-coder:32b` (close to top commercial models) |
 
-# interactive mode
-python gpt.py chat
+Change the model with `--model qwen2.5-coder:14b`, or edit the `FROM` line in `coder/Modelfile`.
+
+## 2. Train it on your own code
+
+Open [`finetune/colab.ipynb`](finetune/colab.ipynb) in Google Colab (File > Open notebook > GitHub, paste this repo's URL), switch to a T4 GPU, and run the cells. It:
+
+1. turns your projects into training examples (`make_dataset.py`): code completion, explanations, and bug-finding exercises made by injecting realistic bugs into your own code,
+2. fine-tunes the model with LoRA (`train_lora.py`),
+3. exports it to a `mycoder.gguf` file you download and run offline with Ollama (`export.py`).
+
+Best results come from adding your own hand-written examples to `finetune/data/example.jsonl` (one JSON line each, see the file for the format). A few hundred good examples beat thousands of auto-generated ones.
+
+Have an NVIDIA GPU at home? Run the same scripts locally:
+```
+cd finetune
+pip install -r requirements.txt
+python make_dataset.py ~/my_projects --out data/train.jsonl
+python train_lora.py --data data/train.jsonl --eval_data data/train.eval.jsonl
+python export.py --lora out/mycoder-lora
+ollama create mycoder -f out/Modelfile
 ```
 
-## Make it smarter
+## 3. mygpt: a GPT from scratch
 
-- **More data:** replace `input.txt` with any large text file (books, articles, your own writing). More text = better model. The "Tiny Shakespeare" dataset (1 MB) is a classic choice.
-- **Bigger model:** `--n_layer 6 --n_embd 192 --n_head 6 --block_size 128` (slower, but learns more).
-- **Train longer:** `--steps 10000`.
+```
+cd mygpt
+pip install numpy
+python gpt.py chat
+```
+See [`mygpt/README.md`](mygpt/README.md). This one is for learning: every part of a transformer, including backpropagation, written by hand in ~400 lines.
 
-## How it compares to Claude
+## Honest expectations
 
-Same core idea (predict the next token with a transformer), but Claude has hundreds of billions of parameters instead of 350 thousand, is trained on trillions of words, uses smarter tokenizers, and is then fine-tuned with human feedback to follow instructions and chat. This project is the first rung of that ladder.
+- **mycoder** is genuinely useful for writing code, explaining it, and catching bugs. The 7B model is roughly at the level of commercial assistants from 2023; 32B is much closer to today's best. It will still make mistakes, so test what it writes.
+- **Fine-tuning** teaches the model your style, libraries and common mistakes. It does not make a 1.5B model as smart as a 32B one; model size matters most.
+- **mygpt** is trained on ~10 KB of stories, so it mostly remixes what it memorized. Give it a few MB of text and train longer for more original output.

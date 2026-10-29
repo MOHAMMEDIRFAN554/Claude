@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+finetune/out/
+finetune/llama.cpp/
+finetune/data/train*.jsonl
+*.gguf
